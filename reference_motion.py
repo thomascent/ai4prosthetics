@@ -38,7 +38,7 @@ class ReferenceMotion:
 
 
 class ReferenceMotionWrapper(gym.Wrapper):
-    def __init__(self, env, motion_file, omega=1., rsi=False):
+    def __init__(self, env, motion_file, omega=1.0, rsi=False):
         super(ReferenceMotionWrapper, self).__init__(env)
 
         env_obs_shape = env.observation_space.shape[0]
@@ -48,7 +48,7 @@ class ReferenceMotionWrapper(gym.Wrapper):
         self.frame = 0
         self.omega = omega
         self.rsi = rsi
-        self.near_enough = 0.95
+        self.near_enough = 0.9
 
     def step(self, action, **kwargs):
         observation, reward, done, info = self.env.step(action, **kwargs)
