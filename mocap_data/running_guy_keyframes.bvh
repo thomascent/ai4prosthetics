@@ -2,7 +2,7 @@ HIERARCHY
 ROOT Pelvis
 {
 	OFFSET 0.00000 0.00000 0.00000
-	CHANNELS 6 Xposition Yposition Zposition Zrotation Yrotation Xrotation 
+	CHANNELS 6 Xposition Yposition Zposition Zrotation Yrotation Xrotation
 	JOINT LHipJoint
 	{
 		OFFSET 0 0 0
