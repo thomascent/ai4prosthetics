@@ -25,7 +25,7 @@ if __name__ == '__main__':
     log_dir = 'runs/' + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout'])
 
-    env = ProstheticsEnv(visualize=True)
+    env = ProstheticsEnv(visualize=False)
     wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy_loop.bvh', rsi=False)
 
     with tf.Session() as sess:
@@ -37,6 +37,6 @@ if __name__ == '__main__':
         saver.try_restore()
         callback = saver.save if MPI.COMM_WORLD.Get_rank() == 0 else None
 
-        ppo.train(max_timesteps=args.ntimesteps, optimizer_stepsize=5e-5, user_callback=callback)
+        ppo.train(max_timesteps=args.ntimesteps, optimizer_stepsize=1e-4, user_callback=callback)
 
         env.close()

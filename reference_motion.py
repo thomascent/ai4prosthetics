@@ -56,7 +56,6 @@ class ReferenceMotionWrapper(gym.Wrapper):
 
         if self.calculate_similarity(self.motion[self.frame], self.env.get_state_desc()['joint_pos']) > self.near_enough:
             self.frame += 1
-            print('next!')
 
         return observation, reward, done, info
 
