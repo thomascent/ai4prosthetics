@@ -46,25 +46,17 @@ class ReferenceMotionWrapper(gym.Wrapper):
         
         self.motion = ReferenceMotion(motion_file)
         self.frame = 0
+        self.prev_similarity = 0.0
         self.omega = omega
         self.rsi = rsi
-        self.near_enough = 0.9
-
-    def step(self, action, **kwargs):
-        observation, reward, done, info = self.env.step(action, **kwargs)
-        observation, reward = self.observation(observation), self.reward(reward)
-
-        if self.calculate_similarity(self.motion[self.frame], self.env.get_state_desc()['joint_pos']) > self.near_enough:
-            self.frame += 1
-
-        return observation, reward, done, info
+        self.CLOSE_ENOUGH = 0.95
 
     def reset(self, project=True, frame=None, **kwargs):
         observation = self.env.reset(project, **kwargs)
         
         if self.rsi or frame:
             self.frame = r.randint(0,len(self.motion)-1) if frame is None else frame
-            self.set_state_desc(self.motion[self.frame])
+            self.set_state_desc(self.motion[self.frame-1])
             self.env.osim_model.model.equilibrateMuscles(self.env.osim_model.get_state())
             self.env.osim_model.state_desc_istep = None
 
@@ -72,8 +64,19 @@ class ReferenceMotionWrapper(gym.Wrapper):
                 observation = self.env.get_observation()
             else:
                 observation = self.env.get_state_desc()
+
+        self.prev_similarity = self.calculate_similarity(self.motion[self.frame], self.env.get_state_desc()['joint_pos'])
     
         return self.observation(observation)
+
+    def step(self, action, **kwargs):
+        observation, reward, done, info = self.env.step(action, **kwargs)
+        imitation_reward = self.imitation_reward()
+        observation = self.observation(observation)
+
+        info['imitation_reward'] = imitation_reward
+
+        return observation, reward + imitation_reward, done, info
 
     def observation(self, observation):
         if isinstance(observation, dict):
@@ -83,9 +86,17 @@ class ReferenceMotionWrapper(gym.Wrapper):
 
         return observation
 
-    def reward(self, reward):
-        reward += self.calculate_similarity(self.motion[self.frame], self.env.get_state_desc()['joint_pos']) * self.omega
-        return reward
+    def imitation_reward(self):
+        curr_similarity = self.calculate_similarity(self.motion[self.frame], self.env.get_state_desc()['joint_pos'])
+        imitation_reward = (curr_similarity - self.prev_similarity) * self.omega
+
+        if curr_similarity > self.CLOSE_ENOUGH:
+            self.frame += 1 # note that we're incrementing the frame here so we need to recalculate similarity
+            self.prev_similarity = self.calculate_similarity(self.motion[self.frame], self.env.get_state_desc()['joint_pos'])
+        else:
+            self.prev_similarity = curr_similarity
+
+        return imitation_reward
 
     def calculate_similarity(self, ref_state_desc, curr_state_desc):
         ref, curr = set(ref_state_desc), set(curr_state_desc)
@@ -109,14 +120,9 @@ if __name__ == '__main__':
     wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy_loop.bvh')
     done = True
 
-    while True:
-        if done:
-            obs = wrapped_env.reset(project=False, frame=i)
-
     for i in range(200):
         print('setting frame: ' + str(i))
         obs = wrapped_env.reset(project=False, frame=i)
         obs, rew, done, _ = wrapped_env.step(env.action_space.sample(), project=False)
-
 
     env.close()
