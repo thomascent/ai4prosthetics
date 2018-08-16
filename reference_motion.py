@@ -33,6 +33,9 @@ class ReferenceMotion:
         for frame in range(self.len):
             yield {k: v[frame] for (k, v) in self.joints.items()}
     
+    def frame_to_phase(self, frame):
+        return (frame % self.len) / self.len
+
     def __len__(self):
         return self.len
 
@@ -70,19 +73,21 @@ class ReferenceMotionWrapper(gym.Wrapper):
         return self.observation(observation)
 
     def step(self, action, **kwargs):
-        observation, reward, done, info = self.env.step(action, **kwargs)
+        observation, task_reward, done, info = self.env.step(action, **kwargs)
         imitation_reward = self.imitation_reward()
         observation = self.observation(observation)
 
+        info['task_reward'] = task_reward
         info['imitation_reward'] = imitation_reward
+        info['frame'] = self.frame
 
-        return observation, reward + imitation_reward, done, info
+        return observation, task_reward + imitation_reward, done, info
 
     def observation(self, observation):
         if isinstance(observation, dict):
-            observation['phase'] = self.frame / len(self.motion)
+            observation['phase'] = self.motion.frame_to_phase(self.frame)
         elif isinstance(observation, list):
-            observation += [self.frame / len(self.motion)]
+            observation += [self.motion.frame_to_phase(self.frame)]
 
         return observation
 
@@ -123,6 +128,6 @@ if __name__ == '__main__':
     for i in range(200):
         print('setting frame: ' + str(i))
         obs = wrapped_env.reset(project=False, frame=i)
-        obs, rew, done, _ = wrapped_env.step(env.action_space.sample(), project=False)
+        obs, rew, done, info = wrapped_env.step(env.action_space.sample(), project=False)
 
     env.close()

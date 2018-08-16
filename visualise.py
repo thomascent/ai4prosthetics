@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     model_dir = os.path.join('models', args.model)
     env = ProstheticsEnv(visualize=True)
-    wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy_keyframes.bvh', rsi=False)
+    wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy_loop.bvh', rsi=False)
 
     with tf.Session() as sess:
         pi = MlpPolicy(name='pi', action_shape=(19,), observation_shape=(159,), hid_size=64, num_hid_layers=3)
