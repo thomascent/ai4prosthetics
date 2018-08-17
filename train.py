@@ -27,10 +27,10 @@ class LogandSaver(Saver):
         max_frame = np.max([info['frame'] for info in segment.infos])
         episodes = np.count_nonzero(segment.dones) + 1
 
-        total_episodes, max_frames, total_task_returns, total_imitation_returns = map(sum, zip(*MPI.COMM_WORLD.allgather([episodes, max_frame, task_returns, imitation_returns])))
-        logger.record_tabular('Episode Task Reward Mean', total_task_returns / total_episodes)
-        logger.record_tabular('Episode Imitation Reward Mean', total_imitation_returns / total_episodes)
-        logger.record_tabular('Max Frame Reached', np.mean(max_frames))
+        # total_episodes, max_frames, total_task_returns, total_imitation_returns = map(sum, zip(*MPI.COMM_WORLD.allgather([episodes, max_frame, task_returns, imitation_returns])))
+        logger.record_tabular('Episode Task Reward Mean', task_returns / episodes)
+        logger.record_tabular('Episode Imitation Reward Mean', imitation_returns / episodes)
+        logger.record_tabular('Max Frame Reached', max_frame)
 
         self.save()
 
