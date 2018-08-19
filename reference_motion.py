@@ -12,17 +12,31 @@ class ReferenceMotion:
     def __init__(self, filename):
         with open(filename) as f:
             mocap = Bvh(f.read())
-        
+
         self.len = mocap.nframes
 
         joints = {}
         joints['knee_l'] = mocap.frames_joint_channels('LeftLeg',['Xrotation'])
         joints['knee_r'] = mocap.frames_joint_channels('RightLeg',['Xrotation'])
         joints['ankle_l'] = mocap.frames_joint_channels('LeftFoot',['Xrotation'])
-        joints['hip_l'] = mocap.frames_joint_channels('LeftUpLeg',['Xrotation'])
-        joints['hip_r'] = mocap.frames_joint_channels('RightUpLeg',['Xrotation'])
+        joints['hip_l'] = mocap.frames_joint_channels('LeftUpLeg',['Xrotation','Yrotation','Zrotation'])
+        joints['hip_r'] = mocap.frames_joint_channels('RightUpLeg',['Xrotation','Yrotation','Zrotation'])
+        joints['ground_pelvis'] = mocap.frames_joint_channels('RightUpLeg',['Xrotation','Yrotation','Zrotation'])
 
         self.joints = {k: [[m.radians(-e) for e in l] for l in v] for (k, v) in joints.items() }
+
+        # @todo: make this less of a filthy hack
+        for i in range(self.len):
+            self.joints['hip_l'][i][1] = 0.
+            self.joints['hip_l'][i][2] = 0.
+            self.joints['hip_r'][i][1] = 0.
+            self.joints['hip_r'][i][2] = 0.
+            self.joints['ground_pelvis'][i][0] = m.radians(-10.) # note this won' work for non-zero yaw angles... ugh
+            self.joints['ground_pelvis'][i][1] = 0.
+            self.joints['ground_pelvis'][i][2] = 0.
+            self.joints['hip_l'][i][0] += m.radians(10.)
+            self.joints['hip_r'][i][0] += m.radians(10.)
+
         self.joints['phase'] = [(i) / self.len for i in range(self.len)]
 
     def __getitem__(self, frame):
@@ -105,7 +119,13 @@ class ReferenceMotionWrapper(gym.Wrapper):
 
     def calculate_similarity(self, ref_state_desc, curr_state_desc):
         ref, curr = set(ref_state_desc), set(curr_state_desc)
-        cos_sim = [np.cos(np.subtract(ref_state_desc[name], curr_state_desc[name][0:len(ref_state_desc[name])])) for name in ref.intersection(curr)]
+
+        cos_sim = []
+
+        for name in ref.intersection(curr):
+            for idx in range(len(ref_state_desc[name])):
+                cos_sim += [ np.cos(np.subtract(ref_state_desc[name][idx], curr_state_desc[name][idx]))]
+
         return np.mean(cos_sim)
 
     def set_state_desc(self, state_desc):
