@@ -13,31 +13,24 @@ class ReferenceMotion:
         with open(filename) as f:
             mocap = Bvh(f.read())
 
+        self.LEAN = 20.
         self.len = mocap.nframes
 
-        joints = {}
-        joints['knee_l'] = mocap.frames_joint_channels('LeftLeg',['Xrotation'])
-        joints['knee_r'] = mocap.frames_joint_channels('RightLeg',['Xrotation'])
-        joints['ankle_l'] = mocap.frames_joint_channels('LeftFoot',['Xrotation'])
-        joints['hip_l'] = mocap.frames_joint_channels('LeftUpLeg',['Xrotation','Yrotation','Zrotation'])
-        joints['hip_r'] = mocap.frames_joint_channels('RightUpLeg',['Xrotation','Yrotation','Zrotation'])
-        joints['ground_pelvis'] = mocap.frames_joint_channels('RightUpLeg',['Xrotation','Yrotation','Zrotation'])
+        self.joints = {}
+        self.joints['hip_l'] = np.array([self.align_mocap_to_osim(eul_mocap,[0,0,21]) for eul_mocap in mocap.frames_joint_channels('LeftUpLeg',['Xrotation','Yrotation','Zrotation'])])
+        self.joints['hip_r'] = np.array([self.align_mocap_to_osim(eul_mocap,[0,0,-21]) for eul_mocap in mocap.frames_joint_channels('RightUpLeg',['Xrotation','Yrotation','Zrotation'])])
+        self.joints['knee_l'] = np.array([self.align_mocap_to_osim(eul_mocap,[0,0,21]) for eul_mocap in mocap.frames_joint_channels('LeftLeg',['Xrotation','Yrotation','Zrotation'])])[:,:1]
+        self.joints['knee_r'] = np.array([self.align_mocap_to_osim(eul_mocap,[0,0,-21]) for eul_mocap in mocap.frames_joint_channels('RightLeg',['Xrotation','Yrotation','Zrotation'])])[:,:1]
+        self.joints['ankle_l'] = np.array([self.align_mocap_to_osim(eul_mocap,[0,0,21]) for eul_mocap in mocap.frames_joint_channels('LeftFoot',['Xrotation','Yrotation','Zrotation'])])[:,:1]
+        self.joints['ground_pelvis'] = np.zeros([self.len,3])
 
-        self.joints = {k: [[m.radians(-e) for e in l] for l in v] for (k, v) in joints.items() }
+        # now make a few tweaks to the reference motion
+        self.joints['hip_l'][:,1:] = self.joints['hip_r'][:,1:] = 0
+        self.joints['ground_pelvis'][:,0] = m.radians(-self.LEAN)
+        self.joints['hip_l'][:,0] += m.radians(self.LEAN)
+        self.joints['hip_r'][:,0] += m.radians(self.LEAN)
 
-        # @todo: make this less of a filthy hack
-        for i in range(self.len):
-            self.joints['hip_l'][i][1] = 0.
-            self.joints['hip_l'][i][2] = 0.
-            self.joints['hip_r'][i][1] = 0.
-            self.joints['hip_r'][i][2] = 0.
-            self.joints['ground_pelvis'][i][0] = m.radians(-10.) # note this won' work for non-zero yaw angles... ugh
-            self.joints['ground_pelvis'][i][1] = 0.
-            self.joints['ground_pelvis'][i][2] = 0.
-            self.joints['hip_l'][i][0] += m.radians(10.)
-            self.joints['hip_r'][i][0] += m.radians(10.)
-
-        self.joints['phase'] = [(i) / self.len for i in range(self.len)]
+        self.joints['phase'] = [(i) / self.len for i in range(self.len)] # I'm pretty sure I don't need this
 
     def __getitem__(self, frame):
         frame = frame % self.len
@@ -46,12 +39,53 @@ class ReferenceMotion:
     def __iter__(self):
         for frame in range(self.len):
             yield {k: v[frame] for (k, v) in self.joints.items()}
-    
+
     def frame_to_phase(self, frame):
         return (frame % self.len) / self.len
 
     def __len__(self):
         return self.len
+
+    def align_mocap_to_osim(self, eul_mocap, eul_align):
+        # convert the mocap euler angle to a rotation matrix then apply the alignment
+        R_mocap = self.matrix_from_euler(*eul_align).dot(self.matrix_from_euler(*eul_mocap))
+        # apply the rotation defined about the mocap frame to the osim frame
+        R_osim = self.matrix_from_euler(0, 90, 0).dot(R_mocap.dot(self.matrix_from_euler(0,-90, 0)))
+        # convert back to euler angles
+        eul_osim = self.euler_from_matrix(R_osim, units='rad')
+        # and we're done (I still don't know why the order is reversed here though)
+        return [eul_osim[2], eul_osim[1], eul_osim[0]]
+
+    def matrix_from_euler(self, phi, theta=0, psi=0, units='deg'):
+        assert(units == 'deg' or units == 'rad')
+
+        if units == 'deg':
+            [phi, theta, psi] = [m.radians(i) for i in [phi, theta, psi]]
+
+        return np.array([[m.cos(psi)*m.cos(theta), m.cos(psi)*m.sin(theta)*m.sin(phi)-m.cos(phi)*m.sin(psi), m.sin(psi)*m.sin(phi)+m.cos(psi)*m.cos(phi)*m.sin(theta)],
+                        [m.cos(theta)*m.sin(psi), m.cos(psi)*m.cos(phi)+m.sin(psi)*m.sin(theta)*m.sin(phi), m.cos(phi)*m.sin(psi)*m.sin(theta)-m.cos(psi)*m.sin(phi)],
+                        [-m.sin(theta), m.cos(theta)*m.sin(phi), m.cos(theta)*m.cos(phi)]])
+
+    def euler_from_matrix(self, R, units='deg'):
+        assert(units == 'deg' or units == 'rad')
+
+        sy = m.sqrt(R[0,0] * R[0,0] + R[1,0] * R[1,0])
+
+        singular = sy < 1e-6
+
+        if not singular:
+            phi = m.atan2(R[2,1], R[2,2])
+            theta = m.atan2(-R[2,0], sy)
+            psi = m.atan2(R[1,0], R[0,0])
+        else:
+            phi = m.atan2(-R[1,2], R[1,1])
+            theta = m.atan2(-R[2,0], sy)
+            psi = 0
+
+        if units == 'deg':
+            [phi, theta, psi] = [m.degrees(i) for i in [phi, theta, psi]]
+
+        return np.array([phi, theta, psi])
 
 
 class ReferenceMotionWrapper(gym.Wrapper):
@@ -121,10 +155,8 @@ class ReferenceMotionWrapper(gym.Wrapper):
         ref, curr = set(ref_state_desc), set(curr_state_desc)
 
         cos_sim = []
-
         for name in ref.intersection(curr):
-            for idx in range(len(ref_state_desc[name])):
-                cos_sim += [ np.cos(np.subtract(ref_state_desc[name][idx], curr_state_desc[name][idx]))]
+            cos_sim += [*np.cos(ref_state_desc[name] - curr_state_desc[name][:len(ref_state_desc[name])])]
 
         return np.mean(cos_sim)
 
@@ -142,7 +174,7 @@ class ReferenceMotionWrapper(gym.Wrapper):
 if __name__ == '__main__':
 
     env = ProstheticsEnv(visualize=True)
-    wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy_loop.bvh')
+    wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy.bvh')
     done = True
 
     for i in range(200):
