@@ -13,7 +13,7 @@ class ReferenceMotion:
         with open(filename) as f:
             mocap = Bvh(f.read())
 
-        self.LEAN = 20.
+        self.LEAN = -20.
         self.len = mocap.nframes
 
         self.joints = {}
@@ -24,13 +24,27 @@ class ReferenceMotion:
         self.joints['ankle_l'] = np.array([self.align_mocap_to_osim(eul_mocap,[0,0,21]) for eul_mocap in mocap.frames_joint_channels('LeftFoot',['Xrotation','Yrotation','Zrotation'])])[:,:1]
         self.joints['ground_pelvis'] = np.zeros([self.len,3])
 
-        # now make a few tweaks to the reference motion
+        # now make a few tweaks to the reference motion to zero out some joints and add a lean so the guy can accelerate
         self.joints['hip_l'][:,1:] = self.joints['hip_r'][:,1:] = 0
-        self.joints['ground_pelvis'][:,0] = m.radians(-self.LEAN)
-        self.joints['hip_l'][:,0] += m.radians(self.LEAN)
-        self.joints['hip_r'][:,0] += m.radians(self.LEAN)
+        self.joints['ground_pelvis'][:,0] = m.radians(self.LEAN)
+        self.joints['hip_l'][:,0] += m.radians(-self.LEAN)
+        self.joints['hip_r'][:,0] += m.radians(-self.LEAN)
+
+        # @todo: scale imitation reward of each joint to represent their relative importance (ie pelvis is greater than ankle)... I guess the most reasonable way to do this is to take the jacobian of the end site wrt the joint angle
+        # so now I need the jacobian of the joint. I guess I can do that analytically, it probably needs to be static anyway so that the reward doesn't change too much mid-episode
 
         self.joints['phase'] = [(i) / self.len for i in range(self.len)] # I'm pretty sure I don't need this
+
+    def make_frame(self):
+        frame = {}
+        frame['hip_l'] = np.zeros([3])
+        frame['hip_r'] = np.zeros([3])
+        frame['knee_l'] = np.zeros([1])
+        frame['knee_r'] = np.zeros([1])
+        frame['ankle_l'] = np.zeros([1])
+        frame['ground_pelvis'] = np.zeros([3])
+        frame['phase'] = 0
+        return frame
 
     def __getitem__(self, frame):
         frame = frame % self.len
@@ -102,19 +116,24 @@ class ReferenceMotionWrapper(gym.Wrapper):
         self.rsi = rsi
         self.CLOSE_ENOUGH = 0.95
 
+        self.start_state = self.motion.make_frame()
+        self.start_state['ankle_l'][0] = -m.radians(self.motion.LEAN)
+        self.start_state['ground_pelvis'][0] = m.radians(self.motion.LEAN)
+
+
     def reset(self, project=True, frame=None, **kwargs):
         observation = self.env.reset(project, **kwargs)
         
         if self.rsi or frame:
             self.frame = r.randint(0,len(self.motion)-1) if frame is None else frame
-            self.set_state_desc(self.motion[self.frame-1])
-            self.env.osim_model.model.equilibrateMuscles(self.env.osim_model.get_state())
-            self.env.osim_model.state_desc_istep = None
+            self.set_state_desc(self.motion[self.frame])
 
             if project:
                 observation = self.env.get_observation()
             else:
                 observation = self.env.get_state_desc()
+        else:
+            self.set_state_desc(self.start_state)
 
         self.prev_similarity = self.calculate_similarity(self.motion[self.frame], self.env.get_state_desc()['joint_pos'])
     
@@ -169,12 +188,13 @@ class ReferenceMotionWrapper(gym.Wrapper):
                 [joint.get_coordinates(i).setValue(state, state_desc[name][i]) for i in range(len(state_desc[name]))]
 
         self.env.osim_model.set_state(state)
-
+        self.env.osim_model.model.equilibrateMuscles(self.env.osim_model.get_state())
+        self.env.osim_model.state_desc_istep = None
 
 if __name__ == '__main__':
 
     env = ProstheticsEnv(visualize=True)
-    wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy.bvh')
+    wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy_keyframes.bvh')
     done = True
 
     for i in range(200):
