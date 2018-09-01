@@ -11,6 +11,7 @@ class StandUprightWrapper(gym.Wrapper):
     def __init__(self, env):
         super(StandUprightWrapper, self).__init__(env)
         self.ES = 0.5
+        self.observation_space = gym.spaces.Box(np.zeros(160), np.zeros(160))
 
     def reset(self, project=True, **kwargs):
         self.env.reset(project, **kwargs)
