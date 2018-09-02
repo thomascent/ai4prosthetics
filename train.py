@@ -18,7 +18,8 @@ from reference_motion import StandUprightWrapper
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train our running guy!')
     parser.add_argument('--ntimesteps', default=10000000, type=int, help='number of timesteps to run on the environment')
-    parser.add_argument('--model', default='l2r_ref_motion_v4', type=str, help='the name under which the checkpoint file will be saved') 
+    parser.add_argument('--model', default='l2r_ref_motion_v4', type=str, help='the name under which the checkpoint file will be saved')
+    parser.add_argument('--es', default=0.1, type=str, help='the name under which the checkpoint file will be saved')
     args = parser.parse_args()
 
     model_dir = os.path.join('models', args.model)
