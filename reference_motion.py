@@ -8,9 +8,9 @@ import random as r
 
 
 class StandUprightWrapper(gym.Wrapper):
-    def __init__(self, env):
+    def __init__(self, env, es=0.1):
         super(StandUprightWrapper, self).__init__(env)
-        self.ES = 0.5
+        self.ES = es
         self.observation_space = gym.spaces.Box(np.zeros(160), np.zeros(160))
 
     def reset(self, project=True, **kwargs):
