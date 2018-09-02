@@ -6,11 +6,16 @@ import math as m
 import gym
 import random as r
 
+def matrix_from_euler(phi, theta, psi):
+    return np.array([[m.cos(psi)*m.cos(theta), m.cos(psi)*m.sin(theta)*m.sin(phi)-m.cos(phi)*m.sin(psi), m.sin(psi)*m.sin(phi)+m.cos(psi)*m.cos(phi)*m.sin(theta)],
+                    [m.cos(theta)*m.sin(psi), m.cos(psi)*m.cos(phi)+m.sin(psi)*m.sin(theta)*m.sin(phi), m.cos(phi)*m.sin(psi)*m.sin(theta)-m.cos(psi)*m.sin(phi)],
+                    [-m.sin(theta), m.cos(theta)*m.sin(phi), m.cos(theta)*m.cos(phi)]])
+
 
 class StandUprightWrapper(gym.Wrapper):
     def __init__(self, env, es=0.1):
         super(StandUprightWrapper, self).__init__(env)
-        self.ES = es
+        self.ES = 0.5
         self.observation_space = gym.spaces.Box(np.zeros(160), np.zeros(160))
 
     def reset(self, project=True, **kwargs):
@@ -20,10 +25,21 @@ class StandUprightWrapper(gym.Wrapper):
 
     def step(self, action, **kwargs):
         observation, _, done, info = self.env.step(action, **kwargs)
-        return observation, self.alive_bonus(), done, info
+        state = self.env.get_state_desc()
+        reward = self.alive(state) + self.pain(state) + self.crossed_legs(state)
+        return observation, reward, done, info
 
-    def alive_bonus(self):
-        return 4.0 if self.env.get_state_desc()['body_pos']['pelvis'][1] > 0.6 else -1
+    def pain(self, state):
+        # don't hyperextend your knee
+        return -1.0 if any([state['joint_pos'][knee][0] > 0.1 for knee in ['knee_l','knee_r']]) else 0.0
+
+    def crossed_legs(self, state):
+        z_axis = matrix_from_euler(*np.array(state['joint_pos']['ground_pelvis'])[[1,2,0]])[:,2]
+        foot_width = z_axis.dot(state['body_pos']['pros_foot_r']) - z_axis.dot(state['body_pos']['calcn_l'])
+        return -1.0 if foot_width < 0.0 else 0.0
+
+    def alive(self, state):
+        return 4.0 if state['body_pos']['pelvis'][1] > 0.6 else -1
 
     def set_init_state(self):
         state = self.env.osim_model.get_state()
