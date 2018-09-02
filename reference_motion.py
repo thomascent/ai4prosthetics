@@ -15,7 +15,7 @@ def matrix_from_euler(phi, theta, psi):
 class StandUprightWrapper(gym.Wrapper):
     def __init__(self, env, es=0.1):
         super(StandUprightWrapper, self).__init__(env)
-        self.ES = 0.5
+        self.ES = es
         self.observation_space = gym.spaces.Box(np.zeros(160), np.zeros(160))
 
     def reset(self, project=True, **kwargs):
@@ -36,10 +36,10 @@ class StandUprightWrapper(gym.Wrapper):
     def crossed_legs(self, state):
         z_axis = matrix_from_euler(*np.array(state['joint_pos']['ground_pelvis'])[[1,2,0]])[:,2]
         foot_width = z_axis.dot(state['body_pos']['pros_foot_r']) - z_axis.dot(state['body_pos']['calcn_l'])
-        return -1.0 if foot_width < 0.0 else 0.0
+        return -1.0 if foot_width < 0.0 or foot_width > 0.5 else 0.0
 
     def alive(self, state):
-        return 4.0 if state['body_pos']['pelvis'][1] > 0.6 else -1
+        return 4.0 if state['body_pos']['pelvis'][1] > 0.8 else -1
 
     def set_init_state(self):
         state = self.env.osim_model.get_state()

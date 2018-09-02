@@ -30,8 +30,8 @@ if __name__ == '__main__':
     wrapped_env = StandUprightWrapper(env, es=args.es)
 
     with tf.Session() as sess:
-        pi = MlpPolicy(name='pi', action_shape=wrapped_env.action_space.shape, observation_shape=wrapped_env.observation_space.shape, hid_size=64, num_hid_layers=3)
-        critic = MlpCritic(name='critic', observation_shape=wrapped_env.observation_space.shape, hid_size=64, num_hid_layers=3)
+        pi = MlpPolicy(name='pi', action_shape=wrapped_env.action_space.shape, observation_shape=wrapped_env.observation_space.shape, hid_size=400, num_hid_layers=3)
+        critic = MlpCritic(name='critic', observation_shape=wrapped_env.observation_space.shape, hid_size=400, num_hid_layers=3)
         ppo = PPO(pi=pi, critic=critic, env=wrapped_env, timesteps_per_actorbatch=512)
         
         saver = Saver(model_dir, sess)
