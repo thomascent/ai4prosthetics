@@ -12,7 +12,7 @@ from YAPPO.ppo import PPO
 from YAPPO.network import MlpPolicy, MlpCritic
 from YAPPO.util import throttle, Saver
 from datetime import datetime
-from reference_motion import StandUprightWrapper
+from aux_reward import AuxRewardWrapper
 
 
 if __name__ == '__main__':
@@ -27,7 +27,7 @@ if __name__ == '__main__':
     logger.configure(dir=log_dir, format_strs=['tensorboard', 'stdout'])
 
     env = ProstheticsEnv(visualize=False)
-    wrapped_env = StandUprightWrapper(env, es=args.es)
+    wrapped_env = AuxRewardWrapper(env, es=args.es)
 
     with tf.Session() as sess:
         pi = MlpPolicy(name='pi', action_shape=wrapped_env.action_space.shape, observation_shape=wrapped_env.observation_space.shape, hid_size=400, num_hid_layers=3)
