@@ -45,9 +45,9 @@ class AuxRewardWrapper(gym.Wrapper):
         return self.env.get_observation() if project else self.env.get_state_desc()
 
     def step(self, action, **kwargs):
-        observation, velocity_reward, done, info = self.env.step(action, **kwargs)
+        observation, _, done, info = self.env.step(action, **kwargs)
         state = self.env.get_state_desc()
-        reward = velocity_reward + sum([aux(state) for aux in self.aux_rewards])
+        reward = sum([aux(state) for aux in self.aux_rewards])
         return observation, reward, done, info
 
     def knee_hyperextension(self, state):
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     for _ in range(100):
         frame = score = 0
         obs = wrapped_env.reset(project=False)
-        for _ in range(300):
+        for _ in range(3):
             a = wrapped_env.action_space.sample()
             wrapped_env.step(a)
 
