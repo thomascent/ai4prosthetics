@@ -12,16 +12,36 @@ def matrix_from_euler(phi, theta, psi):
                     [-m.sin(theta), m.cos(theta)*m.sin(phi), m.cos(theta)*m.cos(phi)]])
 
 
+def quaternion_from_euler(phi, theta, psi):
+    cos_p = m.cos(theta * 0.5)
+    sin_p = m.sin(theta * 0.5)
+    cos_r = m.cos(phi * 0.5)
+    sin_r = m.sin(phi * 0.5)
+    cos_y = m.cos(psi * 0.5)
+    sin_y = m.sin(psi * 0.5)
+
+    qw = cos_p * cos_r * cos_y + sin_p * sin_r * sin_y
+    qx = cos_p * sin_r * cos_y - sin_p * cos_r * sin_y
+    qy = sin_p * cos_r * cos_y + cos_p * sin_r * sin_y
+    qz = cos_p * cos_r * sin_y - sin_p * sin_r * cos_y
+
+    return np.array([qw, qx, qy, qz])
+
+
+def quaternion_dist(q1, q2):
+    return m.acos(q1.dot(q2.T) ** 2 * 2 - 1)
+
 class AuxRewardWrapper(gym.Wrapper):
     def __init__(self, env, es=0.1):
         super(AuxRewardWrapper, self).__init__(env)
         self.ES = es
         self.observation_space = gym.spaces.Box(np.zeros(160), np.zeros(160))
-        self.aux_rewards = [self.alive, self.knee_hyperextension, self.crossed_legs, self.toppling_backwards]
+        self.aux_rewards = [self.alive, self.knee_hyperextension, self.crossed_legs, self.balance]
+        self.target_posture = quaternion_from_euler(0., 0. ,0.)
 
     def reset(self, project=True, **kwargs):
         self.env.reset(project, **kwargs)
-        self.set_init_state()
+        # self.set_init_state()
         return self.env.get_observation() if project else self.env.get_state_desc()
 
     def step(self, action, **kwargs):
@@ -33,10 +53,8 @@ class AuxRewardWrapper(gym.Wrapper):
     def knee_hyperextension(self, state):
         return -1.0 if any([state['joint_pos'][knee][0] > 0.1 for knee in ['knee_l','knee_r']]) else 0.0
 
-    def toppling_backwards(self, state):
-        x_axis = matrix_from_euler(0, np.array(state['joint_pos']['ground_pelvis'])[[2]], 0)[:,0]
-        head_pos = x_axis.dot(state['body_pos']['head'])
-        return -1.0 if head_pos < 0.0 else 0.0
+    def balance(self, state):
+        return -quaternion_dist(self.target_posture, quaternion_from_euler(*state['joint_pos']['ground_pelvis'][:3])) * 10.
 
     def crossed_legs(self, state):
         z_axis = matrix_from_euler(*np.array(state['joint_pos']['ground_pelvis'])[[1,2,0]])[:,2]
@@ -66,7 +84,7 @@ if __name__ == '__main__':
     for _ in range(100):
         frame = score = 0
         obs = wrapped_env.reset(project=False)
-        for _ in range(3):
+        for _ in range(300):
             a = wrapped_env.action_space.sample()
             wrapped_env.step(a)
 
