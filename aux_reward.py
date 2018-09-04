@@ -13,7 +13,7 @@ def matrix_from_euler(phi, theta, psi):
 
 
 class AuxRewardWrapper(gym.Wrapper):
-    def __init__(self, env, es=0.1):
+    def __init__(self, env, es=0.1, ):
         super(AuxRewardWrapper, self).__init__(env)
         self.ES = es
         self.observation_space = gym.spaces.Box(np.zeros(160), np.zeros(160))
@@ -27,7 +27,7 @@ class AuxRewardWrapper(gym.Wrapper):
     def step(self, action, **kwargs):
         observation, velocity_reward, done, info = self.env.step(action, **kwargs)
         state = self.env.get_state_desc()
-        reward = velocity_reward + sum([aux(state) for aux in self.aux_rewards])
+        reward = sum([aux(state) for aux in self.aux_rewards])
         return observation, reward, done, info
 
     def knee_hyperextension(self, state):
@@ -35,7 +35,8 @@ class AuxRewardWrapper(gym.Wrapper):
 
     def toppling_backwards(self, state):
         x_axis = matrix_from_euler(0, np.array(state['joint_pos']['ground_pelvis'])[[2]], 0)[:,0]
-        head_pos = x_axis.dot(state['body_pos']['head'])
+        head_pos = x_axis.dot(state['body_pos']['head']) - x_axis.dot(state['body_pos']['pelvis'])
+
         return -1.0 if head_pos < 0.0 else 0.0
 
     def crossed_legs(self, state):
