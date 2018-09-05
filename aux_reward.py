@@ -36,7 +36,7 @@ class AuxRewardWrapper(gym.Wrapper):
         super(AuxRewardWrapper, self).__init__(env)
         self.ES = es
         self.observation_space = gym.spaces.Box(np.zeros(160), np.zeros(160))
-        self.aux_rewards = [self.alive, self.knee_hyperextension, self.crossed_legs, self.balance]
+        self.aux_rewards = [self.alive, self.knee_hyperextension, self.crossed_legs, self.balance, self.com_near_feet_base]
         self.target_posture = quaternion_from_euler(0., 0. ,0.)
 
     def reset(self, project=True, **kwargs):
@@ -54,7 +54,16 @@ class AuxRewardWrapper(gym.Wrapper):
         return -1.0 if any([state['joint_pos'][knee][0] > 0.1 for knee in ['knee_l','knee_r']]) else 0.0
 
     def balance(self, state):
-        return -quaternion_dist(self.target_posture, quaternion_from_euler(*state['joint_pos']['ground_pelvis'][:3])) * 10.
+        return quaternion_dist(self.target_posture, quaternion_from_euler(*state['joint_pos']['ground_pelvis'][:3])) * -10.0
+
+    def com_near_feet_base(self, state):
+        foot_l = np.array(state['body_pos']['calcn_l'])[[0,2]]
+        foot_r = np.array(state['body_pos']['pros_foot_r'])[[0,2]]
+        com = np.array(state['misc']['mass_center_pos'])[[0,2]]
+        dist = np.linalg.norm(foot_l / 2 + foot_r / 2 - com)
+
+        return 0.0 if dist < 0.1 else dist * -10.0
+
 
     def crossed_legs(self, state):
         z_axis = matrix_from_euler(*np.array(state['joint_pos']['ground_pelvis'])[[1,2,0]])[:,2]

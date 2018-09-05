@@ -43,7 +43,7 @@ def visualise(pi, env):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Submit running guy to the grader')
-    parser.add_argument('--model', default='l2r_standup', type=str, help='the name under which the checkpoint file will be saved')
+    parser.add_argument('--model', default='l2r_standup_v1', type=str, help='the name under which the checkpoint file will be saved')
     args = parser.parse_args()
 
     model_dir = os.path.join('models', args.model)
