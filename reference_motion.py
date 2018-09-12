@@ -24,7 +24,7 @@ class ReferenceMotionWrapper(gym.Wrapper):
          # If on average the bodies are within 10cm of their target positions then that's fine
         self.CLOSE_ENOUGH = 0.1 * len(self.motion[0]['body_pos'].keys())
 
-        env_obs_shape = env.observation_space.shape[0] + len(flatten(list(self.motion[0].values())))
+        env_obs_shape = env.observation_space.shape[0] + len(flatten(list(self.motion[0]['body_pos'].values()))) + 2
         self.observation_space = gym.spaces.Box(low=np.zeros([env_obs_shape,]), high=np.zeros([env_obs_shape,]), dtype=np.float32)
 
     def reset(self, project=True, frame=None, **kwargs):
@@ -87,9 +87,9 @@ if __name__ == '__main__':
 
     for i in range(200):
         # print('setting frame: ' + str(i))
-        obs = wrapped_env.reset(project=False, frame=0)
+        obs = wrapped_env.reset(project=True, frame=0)
         for j in range(50):
-            obs, rew, done, info = wrapped_env.step(env.action_space.sample(), project=False)
+            obs, rew, done, info = wrapped_env.step(env.action_space.sample(), project=True)
             print(rew, wrapped_env.dist_to_target())
             if done: env.reset()
 
