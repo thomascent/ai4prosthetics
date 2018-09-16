@@ -30,6 +30,8 @@ class ReferenceMotionWrapper(gym.Wrapper):
     def reset(self, project=True, frame=None, **kwargs):
         observation = self.env.reset(project, **kwargs)
 
+        self.target_frame = 0
+
         if frame is not None:
             self.set_state_desc(self.motion[frame]['joint_pos'])
 
@@ -47,6 +49,8 @@ class ReferenceMotionWrapper(gym.Wrapper):
         info['task_reward'] = task_reward
         info['imitation_reward'] = imitation_reward
         info['target_frame'] = self.target_frame
+
+        print(imitation_reward, self.target_frame)
 
         return observation, imitation_reward, done, info
 
