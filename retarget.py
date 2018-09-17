@@ -35,10 +35,6 @@ class MocapData:
         self.joints['ground_pelvis'][:,3] += MOCAP_TO_OSIM_TRANSLATION
         self.joints['ground_pelvis'][:,:3] = self.joints['hip_l'][:,1:] = self.joints['hip_r'][:,1:] = 0
 
-    def __iter__(self):
-        for i in range(self.nframes):
-            yield {k: v[i] for (k, v) in self.joints.items()}
-
     def align_mocap_to_osim(self, eul_mocap, eul_align):
         # convert the mocap euler angle to a rotation matrix then apply the alignment
         R_mocap = matrix_from_euler(*eul_align).dot(matrix_from_euler(*eul_mocap))
@@ -49,19 +45,37 @@ class MocapData:
         # and we're done (I still don't know why the order is reversed here though)
         return np.flip(eul_osim)
 
+    def __iter__(self):
+        for i in range(self.nframes):
+            yield {k: v[i] for (k, v) in self.joints.items()}
+
 
 class MocapDataLoop:
-    def __init__(self, states):
-        self.states = states
-        self.curr_state = copy.deepcopy(states[0])
+    def __init__(self, pkl_filename):
+
+        with open(pkl_filename, 'rb') as f:
+            self.states = pkl.load(f)
+
+        self.curr_state = copy.deepcopy(self.states[0])
         self.curr_frame = 0
+
+    def reset(self, frame_id):
+        self.curr_state = copy.deepcopy(self.states[0])
+        self.curr_frame = 0
+
+        for i, _ in enumerate(self):
+            if i == frame_id:
+                return self.curr_state
+
+    def __len__(self):
+        return len(self.states)
 
     def __iter__(self):
         while True:
             yield self.curr_state
 
             for pos_key, pos_val in self.curr_state.items():
-                for joint_key, joint_val in pos_val.items():
+                for joint_key in pos_val.keys():
                     self.curr_state[pos_key][joint_key] += np.subtract(self.states[self.curr_frame+1][pos_key][joint_key], self.states[self.curr_frame][pos_key][joint_key])
 
             self.curr_frame = (self.curr_frame + 1) % (len(self.states) - 1)
@@ -96,7 +110,10 @@ if __name__ == '__main__':
         states.append({k: state[k] for k in ['body_pos', 'joint_pos']})
         env.step(env.action_space.sample())
 
-    loop = MocapDataLoop(states)
+    with open('mocap_data/running_guy_keyframes.pkl', 'wb') as f:
+        pkl.dump(states, f)
+
+    loop = MocapDataLoop('mocap_data/running_guy_keyframes.pkl')
 
     for i, frame in enumerate(loop):
         if i == 20: break
@@ -107,5 +124,3 @@ if __name__ == '__main__':
 
     env.close()
 
-    with open('mocap_data/running_guy_keyframes.pkl', 'wb') as f:
-        pkl.dump(states, f)

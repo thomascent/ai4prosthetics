@@ -7,94 +7,77 @@ import math as m
 from bvh import Bvh
 import gym
 import random as r
-import pickle as pkl
+from retarget import MocapDataLoop, set_osim_joint_pos
+from transforms import flatten
 
-def flatten(lol):
-    return [i for l in lol for i in l]
 
 class ReferenceMotionWrapper(gym.Wrapper):
-    def __init__(self, env, motion_file, omega=1.0, rsi=False):
+    def __init__(self, env, motion_file, RSI=True):
         super(ReferenceMotionWrapper, self).__init__(env)
 
-        with open(motion_file, 'rb') as f:
-            self.motion = pkl.load(f)
+        self.CLOSE_ENOUGH = 0.12
 
-        self.target_frame = 0
+        self.RSI = RSI
+        self.ref_motion = MocapDataLoop(motion_file)
+        self.ref_motion_it = iter(self.ref_motion)
+        self.target = next(self.ref_motion_it)
 
-         # If on average the bodies are within 10cm of their target positions then that's fine
-        self.CLOSE_ENOUGH = 0.1 * len(self.motion[0]['body_pos'].keys())
+        env_obs = np.zeros([env.observation_space.shape[0] + len(self.target['body_pos'].keys()) * 3 + 2,])
+        self.observation_space = gym.spaces.Box(low=env_obs, high=env_obs, dtype=np.float32)
 
-        env_obs_shape = env.observation_space.shape[0] + len(flatten(list(self.motion[0]['body_pos'].values()))) + 2
-        self.observation_space = gym.spaces.Box(low=np.zeros([env_obs_shape,]), high=np.zeros([env_obs_shape,]), dtype=np.float32)
-
-    def reset(self, project=True, frame=None, **kwargs):
+    def reset(self, project=True, **kwargs):
         observation = self.env.reset(project, **kwargs)
 
-        self.target_frame = 0
+        self.target = self.ref_motion.reset(r.randint(0, len(self.ref_motion)) if self.RSI else 0)
 
-        if frame is not None:
-            self.set_state_desc(self.motion[frame]['joint_pos'])
+        if self.RSI:
+            set_osim_joint_pos(self.env, self.target['joint_pos'])
+            self.target = next(self.ref_motion_it)
+
+        self.prev_dist_to_target = self.dist_to_target()
 
         return self.observation(observation)
 
     def step(self, action, **kwargs):
-        observation, task_reward, done, info = self.env.step(action, **kwargs)
-        imitation_reward = self.imitation_reward()
-        observation = self.observation(observation)
+        obs, task_reward, done, info = self.env.step(action, **kwargs)
+        obs = self.observation(obs)
+
+        imitation_reward = np.exp(-self.dist_to_target()) - np.exp(-self.prev_dist_to_target)
 
         # while the guy is close enough to the next frame, move to the next frame
         while self.dist_to_target() < self.CLOSE_ENOUGH:
-            self.target_frame += 1
+            self.target = next(self.ref_motion_it)
+
+        self.prev_dist_to_target = self.dist_to_target()
 
         info['task_reward'] = task_reward
         info['imitation_reward'] = imitation_reward
-        info['target_frame'] = self.target_frame
+        info['target_frame'] = self.ref_motion.curr_frame
 
-        print(imitation_reward, self.target_frame)
+        return obs, imitation_reward, done, info
 
-        return observation, imitation_reward, done, info
+    def observation(self, obs):
+        if isinstance(obs, dict):
+            for k,v in self.target['body_pos'].items(): obs['target_' + k] = v
+        else: # it's a list
+            obs += flatten(list(self.target['body_pos'].values()))
 
-    def observation(self, observation):
-        if isinstance(observation, dict):
-            for k,v in self.motion[self.target_frame]['body_pos'].items():
-                observation['target_' + k] = v
-        elif isinstance(observation, list):
-            observation += flatten(list(self.motion[self.target_frame]['body_pos'].values()))
-        else:
-            raise ValueError
-
-        return observation
-
-    def imitation_reward(self):
-        return np.exp(-self.dist_to_target())
+        return obs
 
     def dist_to_target(self):
-        ref_desc, curr_desc = self.motion[self.target_frame]['body_pos'], self.env.get_state_desc()['body_pos']
-        return np.sum([norm(np.array(ref_desc[name]) - curr_desc[name]) for name in set(ref_desc).intersection(set(curr_desc))])
+        ref_pos, curr_pos = self.target['body_pos'], self.env.get_state_desc()['body_pos']
+        return np.mean([norm(np.array(ref_pos[name]) - curr_pos[name]) for name in set(ref_pos).intersection(set(curr_pos))])
 
-    def set_state_desc(self, state_desc):
-        state = self.env.osim_model.get_state()
-
-        for joint in self.env.osim_model.model.getJointSet():
-            name = joint.getName()
-            if name in state_desc.keys():
-                [joint.get_coordinates(i).setValue(state, state_desc[name][i]) for i in range(len(state_desc[name]))]
-
-        self.env.osim_model.set_state(state)
-        self.env.osim_model.model.equilibrateMuscles(self.env.osim_model.get_state())
-        self.env.osim_model.state_desc_istep = None
 
 if __name__ == '__main__':
     env = ProstheticsEnv(visualize=True)
-    wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy.bvh.pkl')
+    wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy_keyframes.pkl')
     done = True
 
     for i in range(200):
-        # print('setting frame: ' + str(i))
-        obs = wrapped_env.reset(project=True, frame=0)
+        obs = wrapped_env.reset()
         for j in range(50):
-            obs, rew, done, info = wrapped_env.step(env.action_space.sample(), project=True)
-            print(rew, wrapped_env.dist_to_target())
-            if done: env.reset()
+            obs, rew, done, info = wrapped_env.step(env.action_space.sample(), project=False)
+            if done: continue
 
     env.close()

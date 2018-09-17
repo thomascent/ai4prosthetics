@@ -1,6 +1,7 @@
 import numpy as np
 import math as m
 
+
 def matrix_from_euler(phi, theta=0, psi=0, units='deg'):
     assert(units == 'deg' or units == 'rad')
 
@@ -32,3 +33,7 @@ def euler_from_matrix(R, units='deg'):
         [phi, theta, psi] = [m.degrees(i) for i in [phi, theta, psi]]
 
     return np.array([phi, theta, psi])
+
+
+def flatten(lol):
+    return [i for l in lol for i in l]

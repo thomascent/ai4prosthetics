@@ -34,7 +34,6 @@ def visualise(pi, env):
             score += r
             frame += 1
 
-            # if not env.render("human"): return
             if not done: continue
 
             print("score=%0.2f in %i frames" % (score, frame))
@@ -48,7 +47,7 @@ if __name__ == '__main__':
 
     model_dir = os.path.join('models', args.model)
     env = ProstheticsEnv(visualize=True)
-    wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy.bvh.pkl', rsi=False)
+    wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy_keyframes.pkl', RSI=False)
 
     with tf.Session() as sess:
         pi = MlpPolicy(name='pi', action_shape=wrapped_env.action_space.shape, observation_shape=wrapped_env.observation_space.shape, hid_size=64, num_hid_layers=3)
