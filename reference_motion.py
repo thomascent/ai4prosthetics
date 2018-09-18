@@ -28,7 +28,8 @@ class ReferenceMotionWrapper(gym.Wrapper):
     def reset(self, project=True, **kwargs):
         observation = self.env.reset(project, **kwargs)
 
-        self.target = self.ref_motion.reset(r.randint(0, len(self.ref_motion)) if self.RSI else 0)
+        self.init_frame = r.randint(0, len(self.ref_motion)) if self.RSI else 0
+        self.target = self.ref_motion.reset(self.init_frame)
 
         if self.RSI:
             set_osim_joint_pos(self.env, self.target['joint_pos'])
@@ -48,7 +49,7 @@ class ReferenceMotionWrapper(gym.Wrapper):
 
         info['task_reward'] = task_reward
         info['imitation_reward'] = imitation_reward
-        info['target_frame'] = self.ref_motion.curr_frame
+        info['frames_completed'] = self.ref_motion.curr_frame - self.init_frame
 
         return obs, imitation_reward, done, info
 
@@ -64,7 +65,7 @@ class ReferenceMotionWrapper(gym.Wrapper):
         ref_pos = {k: v for k, v in self.target['body_pos'].items() if not k in ['calcn_l','talus_l']}
         curr_pos = self.env.get_state_desc()['body_pos']
 
-        return np.mean([norm(np.array(ref_pos[name]) - curr_pos[name]) for name in set(ref_pos).intersection(set(curr_pos))])
+        return np.sum([norm(np.array(ref_pos[name]) - curr_pos[name]) for name in set(ref_pos).intersection(set(curr_pos))])
 
 
 if __name__ == '__main__':
