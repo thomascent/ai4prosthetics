@@ -15,9 +15,9 @@ class ReferenceMotionWrapper(gym.Wrapper):
     def __init__(self, env, motion_file, RSI=True):
         super(ReferenceMotionWrapper, self).__init__(env)
 
-        self.CLOSE_ENOUGH = 0.12
+        self.CLOSE_ENOUGH = 1.0
 
-        self.RSI = RSI
+        self.RSI = False
         self.ref_motion = MocapDataLoop(motion_file)
         self.ref_motion_it = iter(self.ref_motion)
         self.target = next(self.ref_motion_it)
@@ -34,21 +34,17 @@ class ReferenceMotionWrapper(gym.Wrapper):
             set_osim_joint_pos(self.env, self.target['joint_pos'])
             self.target = next(self.ref_motion_it)
 
-        self.prev_dist_to_target = self.dist_to_target()
-
         return self.observation(observation)
 
     def step(self, action, **kwargs):
         obs, task_reward, done, info = self.env.step(action, **kwargs)
         obs = self.observation(obs)
 
-        imitation_reward = np.exp(-self.dist_to_target()) - np.exp(-self.prev_dist_to_target)
+        imitation_reward = np.exp(-self.dist_to_target())
 
         # while the guy is close enough to the next frame, move to the next frame
         while self.dist_to_target() < self.CLOSE_ENOUGH:
             self.target = next(self.ref_motion_it)
-
-        self.prev_dist_to_target = self.dist_to_target()
 
         info['task_reward'] = task_reward
         info['imitation_reward'] = imitation_reward
@@ -65,7 +61,9 @@ class ReferenceMotionWrapper(gym.Wrapper):
         return obs
 
     def dist_to_target(self):
-        ref_pos, curr_pos = self.target['body_pos'], self.env.get_state_desc()['body_pos']
+        ref_pos = {k: v for k, v in self.target['body_pos'].items() if not k in ['calcn_l','talus_l']}
+        curr_pos = self.env.get_state_desc()['body_pos']
+
         return np.mean([norm(np.array(ref_pos[name]) - curr_pos[name]) for name in set(ref_pos).intersection(set(curr_pos))])
 
 
