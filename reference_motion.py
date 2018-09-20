@@ -65,7 +65,7 @@ class ReferenceMotionWrapper(gym.Wrapper):
         ref_pos = {k: v for k, v in self.target['body_pos'].items() if not k in ['calcn_l','talus_l']}
         curr_pos = self.env.get_state_desc()['body_pos']
 
-        return np.sum([norm(np.array(ref_pos[name]) - curr_pos[name]) for name in set(ref_pos).intersection(set(curr_pos))])
+        return np.sum([norm(np.array(ref_pos[name])[:2] - curr_pos[name][:2]) for name in set(ref_pos).intersection(set(curr_pos))])
 
 
 if __name__ == '__main__':
