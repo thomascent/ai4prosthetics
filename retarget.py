@@ -59,13 +59,10 @@ class MocapDataLoop:
         self.curr_state = copy.deepcopy(self.states[0])
         self.curr_frame = 0
 
-    def reset(self, frame_id):
+    def reset(self):
         self.curr_state = copy.deepcopy(self.states[0])
         self.curr_frame = 0
-
-        for i, _ in enumerate(self):
-            if i == frame_id:
-                return self.curr_state
+        return self.curr_state
 
     def __len__(self):
         return len(self.states)
@@ -115,11 +112,14 @@ if __name__ == '__main__':
 
     loop = MocapDataLoop('mocap_data/running_guy_keyframes.pkl')
 
-    for i, frame in enumerate(loop):
-        if i == 20: break
+    ref_motion_it = iter(loop)
+    target = next(ref_motion_it)
 
+    for i in range(20):
+        print('setting frame: ' + str(i))
         env.reset(project=False)
-        state = set_osim_joint_pos(env, frame['joint_pos'])
+        set_osim_joint_pos(env, target['joint_pos'])
         env.step(env.action_space.sample())
+        target = next(ref_motion_it)
 
     env.close()

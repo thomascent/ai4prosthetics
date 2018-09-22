@@ -12,15 +12,15 @@ from transforms import flatten
 
 
 class ReferenceMotionWrapper(gym.Wrapper):
-    def __init__(self, env, motion_file, RSI=True):
+    def __init__(self, env, motion_file):
         super(ReferenceMotionWrapper, self).__init__(env)
 
         self.CLOSE_ENOUGH = 1.0
 
-        self.RSI = False
         self.ref_motion = MocapDataLoop(motion_file)
         self.ref_motion_it = iter(self.ref_motion)
         self.target = next(self.ref_motion_it)
+        self.accumulated_reward = 0.
 
         env_obs = np.zeros([env.observation_space.shape[0] + len(self.target['body_pos'].keys()) * 3 + 2,])
         self.observation_space = gym.spaces.Box(low=env_obs, high=env_obs, dtype=np.float32)
@@ -28,12 +28,8 @@ class ReferenceMotionWrapper(gym.Wrapper):
     def reset(self, project=True, **kwargs):
         observation = self.env.reset(project, **kwargs)
 
-        self.init_frame = r.randint(0, len(self.ref_motion)) if self.RSI else 0
-        self.target = self.ref_motion.reset(self.init_frame)
-
-        if self.RSI:
-            set_osim_joint_pos(self.env, self.target['joint_pos'])
-            self.target = next(self.ref_motion_it)
+        self.target = self.ref_motion.reset()
+        self.accumulated_reward = 0.
 
         return self.observation(observation)
 
@@ -45,13 +41,14 @@ class ReferenceMotionWrapper(gym.Wrapper):
 
         # while the guy is close enough to the next frame, move to the next frame
         while self.dist_to_target() < self.CLOSE_ENOUGH:
+            self.accumulated_reward += np.exp(-self.dist_to_target())
             self.target = next(self.ref_motion_it)
 
         info['task_reward'] = task_reward
         info['imitation_reward'] = imitation_reward
-        info['frames_completed'] = self.ref_motion.curr_frame - self.init_frame
+        info['frames_completed'] = self.ref_motion.curr_frame
 
-        return obs, imitation_reward, done, info
+        return obs, imitation_reward + self.accumulated_reward, done, info
 
     def observation(self, obs):
         if isinstance(obs, dict):
@@ -65,7 +62,7 @@ class ReferenceMotionWrapper(gym.Wrapper):
         ref_pos = {k: v for k, v in self.target['body_pos'].items() if not k in ['calcn_l','talus_l']}
         curr_pos = self.env.get_state_desc()['body_pos']
 
-        return np.sum([norm(np.array(ref_pos[name])[:2] - curr_pos[name][:2]) for name in set(ref_pos).intersection(set(curr_pos))])
+        return np.sum([norm(np.array(ref_pos[name]) - curr_pos[name]) for name in set(ref_pos).intersection(set(curr_pos))])
 
 
 if __name__ == '__main__':
@@ -75,6 +72,7 @@ if __name__ == '__main__':
 
     for i in range(200):
         obs = wrapped_env.reset()
+        set_osim_joint_pos(env, wrapped_env.target['joint_pos'])
         for j in range(50):
             obs, rew, done, info = wrapped_env.step(env.action_space.sample(), project=False)
             if done: continue
