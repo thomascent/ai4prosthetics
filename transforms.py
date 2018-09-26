@@ -35,7 +35,7 @@ def euler_from_matrix(R, units='deg'):
     return np.array([phi, theta, psi])
 
 
-def quaternion_from_euler(phi, theta, psi, units='deg'):
+def quaternion_from_euler(phi, theta, psi, units='rad'):
     assert(units == 'deg' or units == 'rad')
 
     if units == 'deg':

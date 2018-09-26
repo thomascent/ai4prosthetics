@@ -43,15 +43,14 @@ class ReferenceMotionWrapper(gym.Wrapper):
         obs, task_reward, done, info = self.env.step(action, **kwargs)
         obs = self.observation(obs)
 
+        imitation_reward = self.reward()
         frames_completed = 0
 
-        # while the guy is close enough to the next frame, move to the next frame
-        while self.end_effector_dist() < self.CLOSE_ENOUGH:
-            self.accumulated_reward += self.reward()
+        # if the guy is close enough to the next frame, move to the next frame
+        if self.end_effector_dist() < self.CLOSE_ENOUGH:
+            self.accumulated_reward += imitation_reward
             self.target = next(self.ref_motion_it)
             frames_completed += 1
-
-        imitation_reward = self.reward()
 
         info['task_reward'] = task_reward
         info['imitation_reward'] = imitation_reward
@@ -90,7 +89,7 @@ if __name__ == '__main__':
     for i in range(200):
         obs = wrapped_env.reset()
         set_osim_joint_pos(env, wrapped_env.target['joint_pos'])
-        for j in range(50):
+        while True:
             obs, rew, done, info = wrapped_env.step(env.action_space.sample(), project=False)
             if done: continue
 
