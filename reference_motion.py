@@ -8,21 +8,24 @@ from bvh import Bvh
 import gym
 import random as r
 from retarget import MocapDataLoop, set_osim_joint_pos
-from transforms import flatten
+from transforms import flatten, pad_zeros, quaternion_from_euler as q_from_e, quaternion_distance as q_dist
 
 
 class ReferenceMotionWrapper(gym.Wrapper):
     def __init__(self, env, motion_file):
         super(ReferenceMotionWrapper, self).__init__(env)
 
-        self.CLOSE_ENOUGH = 1.0
+        self.tracked_positions = ['head','pelvis','toes_l','pros_foot_r']
+        self.tracked_joints = ['ground_pelvis', 'hip_l', 'hip_r', 'knee_l', 'knee_r']
+
+        self.CLOSE_ENOUGH = 0.1 * len(self.tracked_positions)
 
         self.ref_motion = MocapDataLoop(motion_file)
         self.ref_motion_it = iter(self.ref_motion)
         self.target = next(self.ref_motion_it)
         self.accumulated_reward = 0.
 
-        env_obs = np.zeros([env.observation_space.shape[0] + len(self.target['body_pos'].keys()) * 3 + 2,])
+        env_obs = np.zeros([len(self.observation(list(env.observation_space.sample()))) + 2])
         self.observation_space = gym.spaces.Box(low=env_obs, high=env_obs, dtype=np.float32)
 
     def reset(self, project=True, **kwargs):
@@ -33,36 +36,50 @@ class ReferenceMotionWrapper(gym.Wrapper):
 
         return self.observation(observation)
 
+    def reward(self):
+        return np.exp(-self.end_effector_dist()) + 0.25 * np.exp(-self.joint_dist())
+
     def step(self, action, **kwargs):
         obs, task_reward, done, info = self.env.step(action, **kwargs)
         obs = self.observation(obs)
 
-        imitation_reward = np.exp(-self.dist_to_target())
+        frames_completed = 0
 
         # while the guy is close enough to the next frame, move to the next frame
-        while self.dist_to_target() < self.CLOSE_ENOUGH:
-            self.accumulated_reward += np.exp(-self.dist_to_target())
+        while self.end_effector_dist() < self.CLOSE_ENOUGH:
+            self.accumulated_reward += self.reward()
             self.target = next(self.ref_motion_it)
+            frames_completed += 1
+
+        imitation_reward = self.reward()
 
         info['task_reward'] = task_reward
         info['imitation_reward'] = imitation_reward
-        info['frames_completed'] = self.ref_motion.curr_frame
+        info['frames_completed'] = frames_completed
 
         return obs, imitation_reward + self.accumulated_reward, done, info
 
     def observation(self, obs):
         if isinstance(obs, dict):
-            for k,v in self.target['body_pos'].items(): obs['target_' + k] = v
+            for k in filter(lambda k: k in self.tracked_positions, self.target['body_pos'].keys()): obs['target_' + k] = self.target['body_pos'][k]
+            for k in filter(lambda k: k in self.tracked_joints, self.target['joint_pos'].keys()): obs['target_' + k] = self.target['joint_pos'][k]
         else: # it's a list
-            obs += flatten(list(self.target['body_pos'].values()))
+            obs += flatten(list([v for k, v in self.target['body_pos'].items() if k in self.tracked_positions]))
+            obs += flatten(list([v for k, v in self.target['joint_pos'].items() if k in self.tracked_joints]))
 
         return obs
 
-    def dist_to_target(self):
-        ref_pos = {k: v for k, v in self.target['body_pos'].items() if not k in ['calcn_l','talus_l']}
+    def end_effector_dist(self):
+        ref_pos = {k: v for k, v in self.target['body_pos'].items() if k in self.tracked_positions}
         curr_pos = self.env.get_state_desc()['body_pos']
 
         return np.sum([norm(np.array(ref_pos[name]) - curr_pos[name]) for name in set(ref_pos).intersection(set(curr_pos))])
+
+    def joint_dist(self):
+        ref_pos = {k: v for k, v in self.target['joint_pos'].items() if k in self.tracked_joints}
+        curr_pos = self.env.get_state_desc()['joint_pos']
+
+        return np.sum([q_dist(q_from_e(*pad_zeros(ref_pos[name])), q_from_e(*pad_zeros(curr_pos[name]))) for name in set(ref_pos).intersection(set(curr_pos))])
 
 
 if __name__ == '__main__':

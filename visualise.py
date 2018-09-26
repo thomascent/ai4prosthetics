@@ -34,8 +34,6 @@ def visualise(pi, env):
             score += r
             frame += 1
 
-            print(score)
-
             if not done: continue
 
             print("score=%0.2f in %i frames" % (score, frame))
@@ -44,7 +42,7 @@ def visualise(pi, env):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Submit running guy to the grader')
-    parser.add_argument('--model', default='l2r_ref_motion_v5_0', type=str, help='the name under which the checkpoint file will be saved') 
+    parser.add_argument('--model', default='l2r_ref_motion_v8_0', type=str, help='the name under which the checkpoint file will be saved') 
     args = parser.parse_args()
 
     model_dir = os.path.join('models', args.model)
@@ -52,8 +50,8 @@ if __name__ == '__main__':
     wrapped_env = ReferenceMotionWrapper(env, motion_file='mocap_data/running_guy_keyframes.pkl')
 
     with tf.Session() as sess:
-        pi = MlpPolicy(name='pi', action_shape=wrapped_env.action_space.shape, observation_shape=wrapped_env.observation_space.shape, hid_size=64, num_hid_layers=3)
-        critic = MlpCritic(name='critic', observation_shape=wrapped_env.observation_space.shape, hid_size=64, num_hid_layers=3)
+        pi = MlpPolicy(name='pi', action_shape=wrapped_env.action_space.shape, observation_shape=wrapped_env.observation_space.shape, hid_size=300, num_hid_layers=3)
+        critic = MlpCritic(name='critic', observation_shape=wrapped_env.observation_space.shape, hid_size=300, num_hid_layers=3)
 
         saver = Saver(model_dir, sess)
         saver.try_restore()
